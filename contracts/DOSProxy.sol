@@ -83,8 +83,8 @@ contract DOSProxy {
     event LogGrouping(uint groupId, address[] NodeId);
     event LogDuplicatePubKey(uint groupId, uint[4] pubKey);
     event LogAddressNotFound(uint groupId, uint[4] pubKey);
-    event LogPublicKeyAccepted(uint groupId, uint[4] pubKey);
-    event LogPublicKeyUploaded(uint groupId, uint[4] pubKey);
+    event LogPublicKeyAccepted(uint groupId, uint[4] pubKey, uint workingGroupSize);
+    event LogPublicKeyUploaded(uint groupId, uint[4] pubKey, uint idx, uint count, uint groupSize);
     event LogGroupDismiss(uint[4] pubKey);
 
     // whitelist state variables used only for alpha release.
@@ -356,10 +356,11 @@ contract DOSProxy {
     {
         BN256.G2Point memory newPubKey = BN256.G2Point([pubKey[0], pubKey[1]], [pubKey[2], pubKey[3]]);
         bytes32 newPubKeyId = keccak256(abi.encodePacked(pubKey[0], pubKey[1], pubKey[2], pubKey[3]));
+        bool shorten;
         for (uint i = 0; i < pendingGroup.length; i++) {
             if (pendingGroup[i].groupId == groupId) {
                 pendingGroup[i].pubKeyCounts[newPubKeyId] = pendingGroup[i].pubKeyCounts[newPubKeyId] + 1;
-                emit LogPublicKeyUploaded(groupId, pubKey);
+                emit LogPublicKeyUploaded(groupId, pubKey, i, pendingGroup[i].pubKeyCounts[newPubKeyId], groupSize);
                 if (pendingGroup[i].pubKeyCounts[newPubKeyId] > groupSize / 2) {
                     pendingGroup[i].finPubKey = newPubKey;
                     for (uint l = 0; l < workingGroup.length; l++) {
@@ -371,11 +372,16 @@ contract DOSProxy {
                     pendingGroup[i].birthBlkN = block.number;
                     workingGroup.push(pendingGroup[i]);
                     pendingGroup[i] = pendingGroup[pendingGroup.length - 1];
-                    pendingGroup.length -= 1;
-                    emit LogPublicKeyAccepted(groupId, pubKey);
+                    shorten = true;
+                    emit LogPublicKeyAccepted(groupId, pubKey, workingGroup.length);
                 }
-                return;
+                break;
             }
+        }
+        if (shorten) {
+            pendingGroup.length--;
+            shorten = false;
+            return;
         }
         emit LogAddressNotFound(groupId, pubKey);
     }
