@@ -24,7 +24,7 @@ contract DOSProxy {
     struct Group {
         uint groupId;
         address[] adds;
-        mapping(bytes32 => uint8) pubKeyCounts;
+        uint pubKeyCounts;
         BN256.G2Point finPubKey;
         uint birthBlkN;
     }
@@ -36,7 +36,7 @@ contract DOSProxy {
     uint groupSize;
     uint groupingThreshold;
     uint constant groupToPick = 1;
-    uint constant maxLifetime = 80; //in block number
+    uint constant maxLifetime = 40; //in block number
     address[] nodePool;
     // Note: Make atomic changes to group metadata below.
     Group[] workingGroup;
@@ -355,14 +355,19 @@ contract DOSProxy {
         onlyWhitelisted
     {
         BN256.G2Point memory newPubKey = BN256.G2Point([pubKey[0], pubKey[1]], [pubKey[2], pubKey[3]]);
-        bytes32 newPubKeyId = keccak256(abi.encodePacked(pubKey[0], pubKey[1], pubKey[2], pubKey[3]));
         bool shorten;
         for (uint i = 0; i < pendingGroup.length; i++) {
             if (pendingGroup[i].groupId == groupId) {
-                pendingGroup[i].pubKeyCounts[newPubKeyId] = pendingGroup[i].pubKeyCounts[newPubKeyId] + 1;
-                emit LogPublicKeyUploaded(groupId, pubKey, i, pendingGroup[i].pubKeyCounts[newPubKeyId], groupSize);
-                if (pendingGroup[i].pubKeyCounts[newPubKeyId] > groupSize / 2) {
+                if (pendingGroup[i].pubKeyCounts == 0) {
                     pendingGroup[i].finPubKey = newPubKey;
+                    pendingGroup[i].pubKeyCounts++;
+                } else {
+                    if (BN256.G2Equal(pendingGroup[i].finPubKey, newPubKey)) {
+                        pendingGroup[i].pubKeyCounts++;
+                    }
+                }
+                emit LogPublicKeyUploaded(groupId, pubKey, i, pendingGroup[i].pubKeyCounts, groupSize);
+                if (pendingGroup[i].pubKeyCounts > groupSize / 2) {
                     for (uint l = 0; l < workingGroup.length; l++) {
                         if (BN256.G2Equal(workingGroup[l].finPubKey, newPubKey)) {
                             emit LogDuplicatePubKey(groupId, pubKey);
@@ -501,7 +506,7 @@ contract DOSProxy {
             BN256.G2Point memory finPubKey;
             uint groupId = uint(keccak256(abi.encodePacked(
                     ++requestIdSeed, lastRandomness, toBeGrouped[lastRandomness % groupSize])));
-            pendingGroup.push(Group({groupId: groupId, adds: toBeGrouped, finPubKey: finPubKey, birthBlkN: block.number}));
+            pendingGroup.push(Group({groupId: groupId, adds: toBeGrouped, finPubKey: finPubKey, birthBlkN: block.number, pubKeyCounts: 0}));
             emit LogGrouping(groupId, toBeGrouped);
         }
     }
