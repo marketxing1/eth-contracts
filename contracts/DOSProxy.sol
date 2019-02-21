@@ -46,7 +46,6 @@ contract DOSProxy {
 
     uint public lastUpdatedBlock;
     uint public lastRandomness;
-    bytes public lastQueryResult;
     Group lastHandledGroup;
     uint8 constant TrafficSystemRandom = 0;
     uint8 constant TrafficUserRandom = 1;
@@ -71,7 +70,7 @@ contract DOSProxy {
     event LogNonContractCall(address from);
     event LogCallbackTriggeredFor(address callbackAddr);
     event LogRequestFromNonExistentUC();
-    event LogUpdateRandom(uint lastRandomness, uint[4] dispatchedGroup, bytes lastQueryResult);
+    event LogUpdateRandom(uint lastRandomness, uint[4] dispatchedGroup);
     event LogValidationResult(
         uint8 trafficType,
         uint trafficId,
@@ -294,7 +293,6 @@ contract DOSProxy {
 
         emit LogCallbackTriggeredFor(ucAddr);
         delete PendingRequests[requestId];
-        lastQueryResult = result;
         if (trafficType == TrafficUserQuery) {
             UserContractInterface(ucAddr).__callback__(requestId, result);
         } else if (trafficType == TrafficUserRandom) {
@@ -326,24 +324,24 @@ contract DOSProxy {
             return;
         }
         // Update new randomness = sha3(collectively signed group signature)
-        lastRandomness = uint(keccak256(abi.encodePacked(sig[0], sig[1], lastQueryResult)));
+        lastRandomness = uint(keccak256(abi.encodePacked(sig[0], sig[1])));
         lastUpdatedBlock = block.number - 1;
         uint idx = dispatchJob();
         lastHandledGroup = workingGroup[idx];
         // Signal selected off-chain clients to collectively generate a new
         // system level random number for next round.
-        emit LogUpdateRandom(lastRandomness, getGroupPubKey(idx), lastQueryResult);
+        emit LogUpdateRandom(lastRandomness, getGroupPubKey(idx));
     }
 
     // For alpha. To trigger first random number after grouping has done
     // or timeout.
     function fireRandom() public onlyWhitelisted {
-        lastRandomness = uint(keccak256(abi.encode(blockhash(block.number - 1), lastQueryResult)));
+        lastRandomness = uint(keccak256(abi.encode(blockhash(block.number - 1))));
         lastUpdatedBlock = block.number - 1;
         uint idx = dispatchJob();
         lastHandledGroup = workingGroup[idx];
         // Signal off-chain clients
-        emit LogUpdateRandom(lastRandomness, getGroupPubKey(idx), lastQueryResult);
+        emit LogUpdateRandom(lastRandomness, getGroupPubKey(idx));
     }
 
     function handleTimeout() public onlyWhitelisted {
